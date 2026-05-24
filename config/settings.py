@@ -50,32 +50,29 @@ class Settings(BaseSettings):
 def _normalize_proxy_url(url: str) -> str:
     """
     Нормализует URL прокси:
+    - Убирает окружающие кавычки (частая ошибка в .env: BOT_PROXY_LIST="socks5://...")
     - Добавляет схему http:// если отсутствует
     - Оборачивает IPv6-адреса в квадратные скобки
     """
-    url = url.strip()
+    url = url.strip().strip("'\"")
     # Если нет схемы — добавляем http:// (Proxy6 поддерживает оба протокола)
     if "://" not in url:
         url = "http://" + url
 
     # Обработка IPv6 без скобок: http://login:pass@2a0f:...:994:8080
-    # Находим часть после @ (хост:порт) и проверяем на IPv6
     if "@" in url:
         scheme_creds, host_port = url.rsplit("@", 1)
         # IPv6 содержит ':' более одного раза и не в скобках
         if ":" in host_port and not host_port.startswith("["):
-            colon_count = host_port.count(":")
-            if colon_count > 1:
+            if host_port.count(":") > 1:
                 # Последнее ':' — разделитель порта
-                if host_port.count(":") >= 2:
-                    # Ищем последний ':' для порта
-                    last_colon = host_port.rfind(":")
-                    ipv6_addr = host_port[:last_colon]
-                    port = host_port[last_colon + 1:]
-                    if port.isdigit():
-                        host_port = f"[{ipv6_addr}]:{port}"
-                    else:
-                        host_port = f"[{host_port}]"
+                last_colon = host_port.rfind(":")
+                ipv6_addr = host_port[:last_colon]
+                port = host_port[last_colon + 1:]
+                if port.isdigit():
+                    host_port = f"[{ipv6_addr}]:{port}"
+                else:
+                    host_port = f"[{host_port}]"
                 url = f"{scheme_creds}@{host_port}"
     return url
 

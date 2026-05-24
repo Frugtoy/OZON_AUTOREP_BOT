@@ -169,5 +169,58 @@ docker compose up -d
 - [ ] Добавить CI/CD workflow (GitHub Actions: lint + test)
 - [ ] Alembic миграции для БД (вместо `CREATE TABLE IF NOT EXISTS`)
 - [ ] Healthcheck endpoint для Docker
-- [ ] Graceful shutdown (обработка SIGTERM в Docker)
-- [ ] Логирование в файл с ротацией (вместо stdout-only)
+## 🕸  Debug Network Fixes (branch `debug/network-fixes`)
+
+### 1. `aiohttp-socks` — добавлен в зависимости
+**Проблема:** aiogram 3.x использует `aiohttp_socks` для SOCKS-прокси, но пакет не был в `pyproject.toml` → `ModuleNotFoundError` → `RuntimeError: install aiohttp-socks`.
+**Исправление:** `uv add aiohttp-socks>=0.11.0`. Обновлены `pyproject.toml`, `requirements.txt`, `uv.lock`.
+
+### 2. `main.py` — надежный fallback + корректное закрытие сессий
+**Проблемы:**
+- `await dp.start_polling(bot)` + `finally: bot.session.close()` → race condition, сессия закрывается дважды.
+- Тестовый `get_me()` при падении прокси не закрывал сессию перед созданием нового бота → утечка.
+- Отсутствовал `request_timeout` → стандартные 30s таймаут на Windows при блокировке api.telegram.org.
+**Исправления:**
+- `create_bot()` возвращает `Optional[Bot]` — при неудаче proxy-setup возвращает `None`.
+- `test_connection()` гарантированно закрывает сессию при fail перед fallback.
+- `request_timeout=20` — быстрее fail → быстрее fallback.
+- `skip_updates=True` — не ждать 24h старых апдейтов при рестарте.
+- Убрано ручное `bot.session.close()` из `finally` — aiogram сам закрывает при `close_bot_session=True` (дефолт).
+
+### 3. `bot/handlers.py` — graceful cancel auto_loop
+**Проблема:** `asyncio.Task.cancel()` кидает `CancelledError` без обработки → trace в лог.
+**Исправление:** `auto_loop` ловит `CancelledError` и логирует `INFO` без traceback. Добавлена обработка `TelegramNetworkError`.
+
+### 4. `Dockerfile` — healthcheck + link-mode=copy
+- `HEALTHCHECK` — проверяет что процесс main.py живой.
+- `--link-mode=copy` — избегает hardlink fail в overlayfs.
+
+### 5. `config/settings.py` — чистка IPv6-нормализации
+- Убран дублирующий вложенный `if host_port.count(":")`.
+
+---
+
+## Проверка перед коммитом
+
+```bash
+# 1. Синтаксис всех .py
+python -m py_compile main.py config/*.py bot/*.py api/*.py db/*.py services/*.py ai/*.py fileworker.py
+
+# 2. Тест proxy setup
+.venv/bin/python -c \
+  "from aiogram.client.session.aiohttp import AiohttpSession; \
+   AiohttpSession(proxy='socks5://u:p@host:1080')"
+
+# 3. Rebuild lock
+uv lock
+
+# 4. Docker build
+docker compose build --no-cache
+```
+
+## Осталось сделать (вне scope этой ветки)
+- [ ] Написать unit-тесты (`tests/`)
+- [ ] Добавить CI/CD workflow (GitHub Actions: lint + test)
+- [ ] Alembic миграции для БД
+- [ ] Graceful shutdown (обработка SIGTERM/SIGINT)
+- [ ] Логирование в файл с ротацией
