@@ -4,20 +4,6 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-# Настройки прокси (если включен флаг)
-USE_PROXY = os.getenv('USE_PROXY', 'false').lower() == 'true'
-PROXY_LIST = os.getenv('PROXY_LIST', '')
-PROXIES = None
-if USE_PROXY and PROXY_LIST:
-    # Поддерживаем формат: http://user:pass@host:port или несколько через запятую
-    proxies_raw = [p.strip() for p in PROXY_LIST.split(',') if p.strip()]
-    if proxies_raw:
-        proxy_url = proxies_raw[0]
-        PROXIES = {
-            'http': proxy_url,
-            'https': proxy_url
-        }
-
 # Настройки API
 base_url = 'https://api-seller.ozon.ru/'
 headers = {
@@ -45,7 +31,7 @@ def create_comment(review_id, text, parent_comment_id=None):
     if parent_comment_id:
         payload["parent_comment_id"] = parent_comment_id
         
-    response = requests.post(f'{base_url}/v1/review/comment/create', headers=headers, data=json.dumps(payload), proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/comment/create', headers=headers, data=json.dumps(payload))
     return response.json()
 
 def delete_comment(comment_id):
@@ -57,7 +43,7 @@ def delete_comment(comment_id):
     """
     # headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
     payload = {"comment_id": comment_id}
-    response = requests.post(f'{base_url}/v1/review/comment/delete', headers=headers, data=json.dumps(payload), proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/comment/delete', headers=headers, data=json.dumps(payload))
     return response.json()
 
 def list_comments(review_id, limit=100, offset=0, sort_dir="ASC"):
@@ -77,7 +63,7 @@ def list_comments(review_id, limit=100, offset=0, sort_dir="ASC"):
         "review_id": review_id,
         "sort_dir": sort_dir
     }
-    response = requests.post(f'{base_url}/v1/review/comment/list', headers=headers, data=json.dumps(payload), proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/comment/list', headers=headers, data=json.dumps(payload))
     return response.json()
 
 def change_review_status(review_ids, status):
@@ -93,7 +79,7 @@ def change_review_status(review_ids, status):
         "review_ids": review_ids,
         "status": status
     }
-    response = requests.post(f'{base_url}/v1/review/change-status', headers=headers, data=json.dumps(payload), proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/change-status', headers=headers, data=json.dumps(payload))
     return response.json()
 
 def count_reviews():
@@ -103,7 +89,7 @@ def count_reviews():
     :return: Объект с количеством отзывов или ошибка
     """
     # headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
-    response = requests.post(f'{base_url}/v1/review/count', headers=headers, proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/count', headers=headers)
     return response.json()
 
 def info_review(review_id):
@@ -115,7 +101,7 @@ def info_review(review_id):
     """
     # headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
     payload = {"review_id": review_id}
-    response = requests.post(f'{base_url}/v1/review/info', headers=headers, data=json.dumps(payload), proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/info', headers=headers, data=json.dumps(payload))
     return response.json()
 
 def list_reviews(limit=100, last_id=None, sort_dir="ASC", status="UNPROCESSED"):
@@ -136,7 +122,7 @@ def list_reviews(limit=100, last_id=None, sort_dir="ASC", status="UNPROCESSED"):
     }
     if last_id:
         payload['last_id'] = last_id
-    response = requests.post(f'{base_url}/v1/review/list', headers=headers, data=json.dumps(payload), proxies=PROXIES)
+    response = requests.post(f'{base_url}/v1/review/list', headers=headers, data=json.dumps(payload))
 
     return response.json()
 
