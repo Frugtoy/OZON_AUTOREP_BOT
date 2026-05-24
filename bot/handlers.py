@@ -8,6 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.exceptions import TelegramNetworkError
 
 from config import settings
 from services import ReviewService
@@ -301,10 +302,19 @@ async def process_remove_admin(message: Message, state: FSMContext):
 auto_tasks: dict[int, asyncio.Task] = {}
 
 
-async def auto_loop(chat_id: int, bot):
-    while True:
-        await bot.send_message(chat_id, generate_random_review())
-        await asyncio.sleep(5)
+async def auto_loop(chat_id: int, bot) -> None:
+    """Безопасный цикл с graceful cancel."""
+    try:
+        while True:
+            await bot.send_message(chat_id, generate_random_review())
+            await asyncio.sleep(5)
+    except asyncio.CancelledError:
+        logger.info("auto_loop cancelled for chat_id=%s", chat_id)
+        raise
+    except TelegramNetworkError as exc:
+        logger.error("auto_loop network error chat_id=%s: %s", chat_id, exc)
+    except Exception as exc:
+        logger.exception("auto_loop unexpected error chat_id=%s: %s", chat_id, exc)
 
 
 @router.callback_query(F.data == "start_auto_answers")
