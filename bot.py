@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.client.session.aiohttp import AiohttpSession
 import os
 from dotenv import load_dotenv
 from fileworker import *  # Импортируем модуль fileworker
@@ -14,10 +15,24 @@ from autorep import run as autorep_run
 import dashboard
 load_dotenv()
 
+# Настройки прокси для Telegram бота
+USE_BOT_PROXY = os.getenv('USE_BOT_PROXY', 'false').lower() == 'true'
+BOT_PROXY_LIST = os.getenv('BOT_PROXY_LIST', '')
+
+session = None
+if USE_BOT_PROXY and BOT_PROXY_LIST:
+    proxies_raw = [p.strip() for p in BOT_PROXY_LIST.split(',') if p.strip()]
+    if proxies_raw:
+        session = AiohttpSession(proxy=proxies_raw[0])
+        print(f"[INFO] Telegram бот использует прокси: {proxies_raw[0]}")
+
 # Настройки бота
 router = Router()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(BOT_TOKEN)
+if session:
+    bot = Bot(BOT_TOKEN, session=session)
+else:
+    bot = Bot(BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 sudo = [438662734]

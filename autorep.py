@@ -117,14 +117,26 @@ from ozon_api import count_reviews, list_reviews, change_review_status, create_c
 
 async def get_rewiews_by_rating(rating_list, last_id = None):
     raw = list_reviews(last_id = last_id,sort_dir = "DESC", status = "UNPROCESSED")
+    
+    # Защита от пустого ответа API
+    if not raw or 'reviews' not in raw:
+        print(f"[WARN] API вернул пустой ответ или нет reviews: {raw}")
+        return []
+    
     rews = [i for i in raw['reviews'] if int(i["rating"]) in rating_list]
     if rews:
         return rews
     else:
+        # Проверяем, есть ли last_id для следующей страницы
+        next_last_id = raw.get('last_id')
+        if not next_last_id:
+            print(f"[INFO] Больше нет отзывов для обработки (last_id отсутствует)")
+            return []
         try:
-            return await get_rewiews_by_rating(rating_list, last_id =raw['last_id'])
+            return await get_rewiews_by_rating(rating_list, last_id=next_last_id)
         except Exception as E:
-            return E
+            print(f"[ERROR] Ошибка при рекурсивном запросе: {E}")
+            return []
             
 
 async def proceed_reviews(reviews_config_path = 'data/reviews_config.json' ):
