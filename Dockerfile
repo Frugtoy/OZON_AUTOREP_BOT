@@ -1,14 +1,23 @@
-# Используем официальную легковесную версию образа Python
-FROM python:3.11-slim-buster
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Копируем необходимые файлы внутрь контейнера
+# Устанавливаем системные зависимости (gcc для нативных пакетов)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем конфигурацию uv и lock-файл
+COPY pyproject.toml uv.lock ./
+
+# Создаём venv и устанавливаем зависимости (без dev)
+RUN uv sync --no-dev --no-cache
+
+# Копируем весь проект
 COPY . .
 
-# Устанавливаем зависимости из файла requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Создаём директорию для данных
+RUN mkdir -p /app/data
 
-# Запускаем приложение
-CMD ["python", "bot.py"]
+# Запуск через uv run (автоматически использует .venv)
+CMD ["uv", "run", "--no-dev", "main.py"]
