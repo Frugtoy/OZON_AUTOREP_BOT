@@ -50,10 +50,11 @@ class Settings(BaseSettings):
 def _normalize_proxy_url(url: str) -> str:
     """
     Нормализует URL прокси:
+    - Убирает окружающие кавычки (частая ошибка в .env: BOT_PROXY_LIST="socks5://...")
     - Добавляет схему http:// если отсутствует
     - Оборачивает IPv6-адреса в квадратные скобки
     """
-    url = url.strip()
+    url = url.strip().strip("'\"")
     # Если нет схемы — добавляем http:// (Proxy6 поддерживает оба протокола)
     if "://" not in url:
         url = "http://" + url
