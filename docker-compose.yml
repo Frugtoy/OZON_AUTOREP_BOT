@@ -2,7 +2,11 @@ version: "3.8"
 
 services:
   bot:
-    build: .
+    build:
+      context: .
+      # Кеш uv и pip — разные, контейнер должен свой venv
+      args:
+        - UV_LINK_MODE=copy
     container_name: ozon_autorep_bot
     env_file: .env
     volumes:
@@ -12,6 +16,9 @@ services:
     restart: unless-stopped
     networks:
       - ozon_net
+    # Опционально: пробросить host-прокси (если прокси крутится на хосте)
+    # extra_hosts:
+    #   - "proxy.local:host-gateway"
 
   ollama:
     image: ollama/ollama:latest

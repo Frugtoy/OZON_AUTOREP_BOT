@@ -39,21 +39,37 @@ class ReviewService:
             total_api = count_reviews().get("total", 0)
             new_count = total_api - len(all_reviews)
 
-            if not new_count or not all_reviews:
+            if new_count <= 0:
                 logger.info("Нет новых отзывов для загрузки")
                 return
 
-            last_id = all_reviews[-1]["id"]
+            # При пустой БД загружаем с начала (без last_id)
+            last_id = all_reviews[-1]["id"] if all_reviews else None
+            loaded_total = 0
+
             while new_count > 0:
-                logger.info(f"Загрузка новых отзывов: {new_count} шт.")
-                reviews = list_reviews(last_id=last_id, limit=100, status="ALL")
-                for review in reviews.get("reviews", []):
+                logger.info(f"Загрузка новых отзывов: осталось ~{new_count} шт.")
+
+                if last_id:
+                    reviews_batch = list_reviews(last_id=last_id, limit=100, status="ALL")
+                else:
+                    reviews_batch = list_reviews(limit=100, status="ALL")
+
+                batch = reviews_batch.get("reviews", [])
+                if not batch:
+                    logger.warning("API вернул пустой список, прерываем синхронизацию")
+                    break
+
+                for review in batch:
                     manager.add_review(review)
+                    loaded_total += 1
 
                 all_reviews = manager.get_all_reviews()
                 total_api = count_reviews().get("total", 0)
                 new_count = total_api - len(all_reviews)
                 last_id = all_reviews[-1]["id"] if all_reviews else None
+
+            logger.info(f"Синхронизация завершена, загружено {loaded_total} отзывов")
 
     async def get_unprocessed(self, ratings: List[int]) -> List[Dict[str, Any]]:
         with ReviewManager() as manager:

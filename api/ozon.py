@@ -1,7 +1,13 @@
 import requests
-import json
 import logging
 from typing import Optional, Dict, Any
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 
 from config import settings
 
@@ -18,15 +24,28 @@ def _headers() -> Dict[str, str]:
     }
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(
+        (requests.exceptions.Timeout, requests.exceptions.ConnectionError)
+    ),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=False,
+)
 def _post(endpoint: str, payload: Optional[Dict] = None) -> Dict[str, Any]:
     url = f"{base_url}{endpoint}"
     try:
         response = requests.post(url, headers=_headers(), json=payload or {}, timeout=30)
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.HTTPError as e:
+        # 4xx ошибки — не retry, но логируем
+        logger.error(f"Ozon API HTTP error [{endpoint}]: {e.response.status_code} — {e.response.text[:200]}")
+        raise
     except requests.exceptions.RequestException as e:
-        logger.error(f"Ozon API error [{endpoint}]: {e}")
-        return {}
+        logger.error(f"Ozon API network error [{endpoint}]: {e}")
+        raise
 
 
 def create_comment(review_id: str, text: str, parent_comment_id: Optional[str] = None) -> Dict[str, Any]:

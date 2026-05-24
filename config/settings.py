@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # GigaChat
     gigachat_credentials: str
+    gigachat_verify_ssl: bool = True  # false только для отладки MITM-риск!
 
     # Telegram Bot
     bot_token: str
@@ -32,11 +33,51 @@ class Settings(BaseSettings):
     reviews_counter_path: str = "./data/rewiews_counter.json"
 
     @property
+    def bot_proxies(self) -> List[str]:
+        """Все прокси из списка (поддержка fallback)."""
+        if not self.use_bot_proxy or not self.bot_proxy_list:
+            return []
+        raw = [p.strip() for p in self.bot_proxy_list.split(",") if p.strip()]
+        return [_normalize_proxy_url(p) for p in raw]
+
+    @property
     def bot_proxy(self) -> Optional[str]:
-        if self.use_bot_proxy and self.bot_proxy_list:
-            proxies = [p.strip() for p in self.bot_proxy_list.split(",") if p.strip()]
-            return proxies[0] if proxies else None
-        return None
+        """Первый прокси из списка (backward compatibility)."""
+        proxies = self.bot_proxies
+        return proxies[0] if proxies else None
+
+
+def _normalize_proxy_url(url: str) -> str:
+    """
+    Нормализует URL прокси:
+    - Добавляет схему http:// если отсутствует
+    - Оборачивает IPv6-адреса в квадратные скобки
+    """
+    url = url.strip()
+    # Если нет схемы — добавляем http:// (Proxy6 поддерживает оба протокола)
+    if "://" not in url:
+        url = "http://" + url
+
+    # Обработка IPv6 без скобок: http://login:pass@2a0f:...:994:8080
+    # Находим часть после @ (хост:порт) и проверяем на IPv6
+    if "@" in url:
+        scheme_creds, host_port = url.rsplit("@", 1)
+        # IPv6 содержит ':' более одного раза и не в скобках
+        if ":" in host_port and not host_port.startswith("["):
+            colon_count = host_port.count(":")
+            if colon_count > 1:
+                # Последнее ':' — разделитель порта
+                if host_port.count(":") >= 2:
+                    # Ищем последний ':' для порта
+                    last_colon = host_port.rfind(":")
+                    ipv6_addr = host_port[:last_colon]
+                    port = host_port[last_colon + 1:]
+                    if port.isdigit():
+                        host_port = f"[{ipv6_addr}]:{port}"
+                    else:
+                        host_port = f"[{host_port}]"
+                url = f"{scheme_creds}@{host_port}"
+    return url
 
 
 settings = Settings()

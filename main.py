@@ -9,11 +9,11 @@ from config import settings, setup_logging
 from bot.handlers import router
 
 
-def create_bot() -> Bot:
+def create_bot(proxy_url: str | None = None) -> Bot:
     session = None
-    if settings.bot_proxy:
-        session = AiohttpSession(proxy=settings.bot_proxy)
-        logging.getLogger(__name__).info(f"Telegram proxy: {settings.bot_proxy}")
+    if proxy_url:
+        session = AiohttpSession(proxy=proxy_url)
+        logging.getLogger(__name__).info(f"Telegram proxy: {proxy_url}")
     return Bot(settings.bot_token, session=session)
 
 
@@ -22,7 +22,28 @@ async def main():
     logger = logging.getLogger(__name__)
     logger.info("Starting Ozon AutoReply Bot")
 
-    bot = create_bot()
+    # Пробуем прокси по очереди (fallback)
+    bot = None
+    proxies = settings.bot_proxies
+    if proxies:
+        for proxy in proxies:
+            try:
+                bot = create_bot(proxy)
+                # Тестовый запрос чтобы проверить соединение
+                me = await bot.get_me()
+                logger.info(f"Подключено через прокси {proxy}, бот: @{me.username}")
+                break
+            except Exception as e:
+                logger.warning(f"Прокси {proxy} не работает: {e}")
+                if bot:
+                    await bot.session.close()
+                bot = None
+        if bot is None:
+            logger.error("Все прокси недоступны, пробуем без прокси...")
+            bot = create_bot(None)
+    else:
+        bot = create_bot(None)
+
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
 

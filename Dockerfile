@@ -1,15 +1,23 @@
-FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
-# Устанавливаем зависимости
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e .
+# Устанавливаем системные зависимости (gcc для нативных пакетов)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Копируем код
+# Копируем конфигурацию uv и lock-файл
+COPY pyproject.toml uv.lock ./
+
+# Создаём venv и устанавливаем зависимости (без dev)
+RUN uv sync --no-dev --no-cache
+
+# Копируем весь проект
 COPY . .
 
-# Создаём директории для данных
-RUN mkdir -p /app/data/logs
+# Создаём директорию для данных
+RUN mkdir -p /app/data
 
-CMD ["python", "main.py"]
+# Запуск через uv run (автоматически использует .venv)
+CMD ["uv", "run", "--no-dev", "main.py"]
