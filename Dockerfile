@@ -1,14 +1,15 @@
-# Используем официальную легковесную версию образа Python
-FROM python:3.11-slim-buster
+FROM python:3.12-slim
 
-# Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Копируем необходимые файлы внутрь контейнера
+# Устанавливаем зависимости
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir -e .
+
+# Копируем код
 COPY . .
 
-# Устанавливаем зависимости из файла requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Создаём директории для данных
+RUN mkdir -p /app/data/logs
 
-# Запускаем приложение
-CMD ["python", "bot.py"]
+CMD ["python", "main.py"]

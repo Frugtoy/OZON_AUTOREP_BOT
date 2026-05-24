@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  bot:
+    build: .
+    container_name: ozon_autorep_bot
+    env_file: .env
+    volumes:
+      - bot_data:/app/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - ozon_net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ozon_ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - ozon_net
+    # Для GPU (опционально):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  bot_data:
+  ollama_models:
+
+networks:
+  ozon_net:
+    driver: bridge
