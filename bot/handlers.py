@@ -306,16 +306,63 @@ async def process_remove_admin(message: Message, state: FSMContext):
         await message.answer("Пользователь не найден.")
 
 
-# ─── Auto answers ────────────────────
+# ─── Auto answers (Ozon integration) ───
 auto_tasks: dict[int, asyncio.Task] = {}
 
 
 async def auto_loop(chat_id: int, bot) -> None:
-    """Безопасный цикл с graceful cancel."""
+    """
+    Реальный цикл автоответов на отзывы Ozon:
+    - Раз в 60 сек проверяем новые UNPROCESSED отзывы
+    - Синхронизируем БД раз в 5 минут
+    - Обрабатываем batch'ами, шлём ответы
+    """
+    logger.info("auto_loop started for chat_id=%s", chat_id)
+
+    # Первоначальная синхронизация
+    try:
+        logger.info("Начальная синхронизация БД...")
+        await service.update_db()
+        await bot.send_message(chat_id, "📡 БД синхронизирована с Ozon.")
+    except Exception as exc:
+        logger.error(f"Начальная синхронизация не удалась: {exc}")
+        await bot.send_message(chat_id, f"⚠️ Ошибка начальной синхронизации: {exc}")
+
+    last_db_sync = asyncio.get_event_loop().time()
+    DB_SYNC_INTERVAL = 300  # 5 минут
+
     try:
         while True:
-            await bot.send_message(chat_id, generate_random_review())
-            await asyncio.sleep(5)
+            loop = asyncio.get_event_loop()
+            now = loop.time()
+
+            # Синхронизация БД раз в 5 минут
+            if now - last_db_sync >= DB_SYNC_INTERVAL:
+                try:
+                    logger.info("Периодическая синхронизация БД...")
+                    await service.update_db()
+                    last_db_sync = now
+                except Exception as exc:
+                    logger.error(f"Синхронизация БД не удалась: {exc}")
+
+            # Обработка отзывов
+            try:
+                success, skip, errors = await service.process_batch()
+                if success or skip or errors:
+                    msg = (
+                        f"🔄 Обработка отзывов:\n"
+                        f"  ✅ Отвечено: {success}\n"
+                        f"  ⏭️ Пропущено (не по фильтру): {skip}\n"
+                        f"  ❌ Ошибок: {errors}"
+                    )
+                    await bot.send_message(chat_id, msg)
+            except Exception as exc:
+                logger.exception("Ошибка в process_batch: %s", exc)
+                await bot.send_message(chat_id, f"❌ Ошибка обработки: {exc}")
+
+            # Ждём перед следующей итерацией
+            await asyncio.sleep(60)
+
     except asyncio.CancelledError:
         logger.info("auto_loop cancelled for chat_id=%s", chat_id)
         raise
@@ -333,7 +380,7 @@ async def start_auto(callback: CallbackQuery):
         return
     task = asyncio.create_task(auto_loop(chat_id, callback.bot))
     auto_tasks[chat_id] = task
-    await callback.message.edit_text("Автоответчик запущен.")
+    await callback.message.edit_text("✅ Автоответчик запущен. Буду проверять отзывы раз в минуту.")
 
 
 @router.callback_query(F.data == "stop_auto_answers")
@@ -341,7 +388,7 @@ async def stop_auto(callback: CallbackQuery):
     chat_id = callback.message.chat.id
     if chat_id in auto_tasks:
         auto_tasks.pop(chat_id).cancel()
-        await callback.message.edit_text("Автоответчик остановлен.")
+        await callback.message.edit_text("🛑 Автоответчик остановлен.")
     else:
         await callback.message.edit_text("Автоответчик не запущен.")
 

@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 from random import choice
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from db import ReviewManager
 from config import settings
@@ -32,6 +32,7 @@ class ReviewService:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
     async def update_db(self) -> None:
+        """Синхронизация: подгрузить новые отзывы из Ozon в локальную БД."""
         from api import count_reviews, list_reviews
 
         with ReviewManager() as manager:
@@ -91,3 +92,84 @@ class ReviewService:
             f.seek(0)
             json.dump(data, f)
             f.truncate()
+
+    # ─── Ozon Auto-Reply Batch ───────────────────────────────
+
+    async def process_batch(self) -> Tuple[int, int, int]:
+        """
+        Одна итерация автоответчика:
+        - Запрашивает UNPROCESSED отзывы из Ozon
+        - Отвечает только на те, что подходят под score_list
+        - Возвращает (успешных, пропущено по рейтингу, ошибок)
+        """
+        from api import list_reviews, create_comment
+
+        config = self.load_config()
+        score_list = config.get("score_list", [])
+        if not score_list:
+            logger.info("score_list пуст — не на что отвечать")
+            return 0, 0, 0
+
+        # Пауза между запросами к Ozon API
+        await asyncio.sleep(1)
+
+        batch = list_reviews(status="UNPROCESSED", limit=100)
+        reviews = batch.get("reviews", [])
+
+        if not reviews:
+            logger.debug("Нет UNPROCESSED отзывов")
+            return 0, 0, 0
+
+        success = skip = errors = 0
+
+        with ReviewManager() as manager:
+            for review in reviews:
+                rid = review.get("id")
+                rating = review.get("rating")
+
+                if rating not in score_list:
+                    logger.debug(f"Отзыв {rid} rating={rating} — пропускаем (не в score_list)")
+                    skip += 1
+                    continue
+
+                answer = self.get_random_response(rating, config)
+                logger.info(f"Отвечаем на отзыв {rid} (rating={rating})")
+
+                try:
+                    resp = create_comment(rid, answer)
+                    logger.debug(f"create_comment response: {resp}")
+
+                    # Обновляем локальную БД
+                    manager.update_review(rid, {
+                        "status": "PROCESSED",
+                        "answer": answer,
+                    })
+                    await self.update_counter(rating)
+                    success += 1
+                    await asyncio.sleep(1)  # rate-limit между create_comment
+
+                except Exception as exc:
+                    logger.error(f"Ошибка ответа на отзыв {rid}: {exc}")
+                    # Не помечаем как PROCESSED — при следующем запросе попробуем снова
+                    errors += 1
+                    # Небольшая пауза перед следующей попыткой
+                    await asyncio.sleep(2)
+
+        return success, skip, errors
+
+    async def process_batches(self, max_batches: int = 10) -> Tuple[int, int, int]:
+        """
+        Обрабатывает до max_batches итераций подряд.
+        Останавливается, если batch пустой.
+        Возвращает (успешных, пропущено, ошибок).
+        """
+        total_success = total_skip = total_errors = 0
+        for _ in range(max_batches):
+            s, sk, e = await self.process_batch()
+            total_success += s
+            total_skip += sk
+            total_errors += e
+            # Если batch пустой — выходим, больше пока нечего обрабатывать
+            if s == 0 and sk == 0 and e == 0:
+                break
+        return total_success, total_skip, total_errors
