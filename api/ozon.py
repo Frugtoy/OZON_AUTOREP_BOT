@@ -66,6 +66,15 @@ def delete_comment(comment_id: str) -> Dict[str, Any]:
 def list_comments(
     review_id: str, limit: int = 100, offset: int = 0, sort_dir: str = "ASC"
 ) -> Dict[str, Any]:
+    """
+        Получает список отзывов с возможностью фильтрации.
+        
+        :param limit: Количество отзывов в ответе
+        :param last_id: Последний ID отзыва на предыдущей странице
+        :param sort_dir: Направление сортировки ("ASC"/"DESC")
+        :param status: Фильтр по статусу ("ALL"/"UNPROCESSED"/"PROCESSED")
+        :return: Список отзывов или ошибка
+    """
     return _post(
         "/v1/review/comment/list",
         {"limit": limit, "offset": offset, "review_id": review_id, "sort_dir": sort_dir},

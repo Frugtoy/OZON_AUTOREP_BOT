@@ -19,6 +19,14 @@ from fileworker import (
     remove_review_from_rating,
     save_reviews,
 )
+from api import (create_comment,
+    delete_comment,
+    list_comments,
+    change_review_status,
+    count_reviews,
+    info_review,
+    list_reviews,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -320,7 +328,7 @@ async def auto_loop(chat_id: int, bot) -> None:
 @router.callback_query(F.data == "start_auto_answers")
 async def start_auto(callback: CallbackQuery):
     chat_id = callback.message.chat.id
-    if chat_id in auto_tasks:
+    if len(auto_tasks) > 0 :
         await callback.message.edit_text("Автоответчик уже запущен.")
         return
     task = asyncio.create_task(auto_loop(chat_id, callback.bot))

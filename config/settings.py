@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     def bot_proxy(self) -> Optional[str]:
         """Первый прокси из списка (backward compatibility)."""
         proxies = self.bot_proxies
+        print(proxies)
         return proxies[0] if proxies else None
 
 
